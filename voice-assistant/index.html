@@ -1,0 +1,229 @@
+<title>Wren Assistant</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Public+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen app — masthead, conversation column (max 44rem), docked speak/type bar. */
+:root{
+  --bg:#f6f7f4; --surface:#ffffff; --ink:#18231e; --muted:#5d6a63; --line:#d9dfd9;
+  --green:#1f4d3a; --green-ink:#ffffff; --brass:#9a7531; --bubble-me:#e6eee9; --danger:#a3352b;
+  --display:"Libre Baskerville",Baskerville,"Baskerville Old Face",Georgia,serif;
+  --body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101714; --surface:#17211c; --ink:#e8ede9; --muted:#9aa89f; --line:#2a3a32;
+  --green:#5fae8a; --green-ink:#0d1712; --brass:#d2ad62; --bubble-me:#1f3129; --danger:#e07a6f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101714; --surface:#17211c; --ink:#e8ede9; --muted:#9aa89f; --line:#2a3a32;
+  --green:#5fae8a; --green-ink:#0d1712; --brass:#d2ad62; --bubble-me:#1f3129; --danger:#e07a6f; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 var(--body);display:flex;flex-direction:column}
+.wrap{width:100%;max-width:44rem;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));box-sizing:border-box}
+header{border-bottom:1px solid var(--line);background:var(--surface)}
+header .wrap{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:14px}
+h1{font:700 1.5rem/1 var(--display);margin:0;letter-spacing:.01em}
+h1 i{font-weight:400;color:var(--brass)}
+.tag{font-size:.72rem;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 9px}
+.spacer{flex:1}
+button,select,input{font:inherit;color:inherit}
+.ghost{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 11px;cursor:pointer}
+.ghost:hover{border-color:var(--green)}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+#settings{background:var(--surface);border-bottom:1px solid var(--line)}
+#settings .wrap{display:grid;gap:12px;padding-block:14px}
+#settings label{display:grid;gap:4px;font-size:.85rem;color:var(--muted)}
+#settings select,#settings input{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+.row>*{flex:1 1 12rem;min-width:0}
+.note{font-size:.82rem;color:var(--muted);margin:0}
+main{flex:1;overflow-y:auto}
+#log{display:flex;flex-direction:column;gap:14px;padding-block:22px}
+.msg{max-width:85%;min-width:0;padding:11px 15px;border-radius:14px;white-space:pre-wrap;overflow-wrap:anywhere}
+.wren{align-self:flex-start;background:var(--surface);border:1px solid var(--line);border-bottom-left-radius:4px}
+.wren::before{content:"Wren";display:block;font:italic .78rem var(--display);color:var(--brass);margin-bottom:2px}
+.me{align-self:flex-end;background:var(--bubble-me);border-bottom-right-radius:4px}
+.err{align-self:center;color:var(--danger);font-size:.88rem;text-align:center;max-width:100%}
+footer{border-top:1px solid var(--line);background:var(--surface);padding-bottom:env(safe-area-inset-bottom,0px)}
+footer .wrap{display:flex;gap:10px;align-items:center;padding-block:12px}
+#mic{flex:none;width:52px;height:52px;border-radius:50%;border:none;background:var(--green);color:var(--green-ink);cursor:pointer;display:grid;place-items:center}
+#mic svg{width:22px;height:22px}
+#mic.on{animation:pulse 1.2s ease-in-out infinite}
+#mic:disabled{opacity:.35;cursor:not-allowed}
+@keyframes pulse{50%{box-shadow:0 0 0 9px color-mix(in srgb,var(--green) 25%,transparent)}}
+@media (prefers-reduced-motion:reduce){#mic.on{animation:none;outline:3px solid var(--brass)}}
+#text{flex:1;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:12px 16px}
+#send{flex:none;border:none;background:none;color:var(--green);font-weight:600;cursor:pointer;padding:8px}
+#status{font-size:.8rem;color:var(--muted);min-height:1.2em;padding-bottom:8px}
+</style>
+
+<header><div class="wrap">
+  <h1>Wren <i>at your service</i></h1>
+  <span class="tag" id="voiceTag">en-GB</span>
+  <span class="spacer"></span>
+  <button class="ghost" id="stop" type="button">Stop talking</button>
+  <button class="ghost" id="toggleSettings" type="button" aria-expanded="false" aria-controls="settings">Settings</button>
+</div></header>
+
+<section id="settings" hidden><div class="wrap">
+  <div class="row">
+    <label for="voice">British voice
+      <select id="voice"></select></label>
+    <label for="rate">Speaking speed
+      <select id="rate"><option value="0.9">Unhurried</option><option value="1" selected>Normal</option><option value="1.15">Brisk</option></select></label>
+  </div>
+  <div id="keyRow" hidden>
+    <label for="apiKey">Anthropic API key (needed when Wren runs outside Claude)
+      <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…"></label>
+    <p class="note">Kept only in this browser on this device.</p>
+  </div>
+  <div class="row"><button class="ghost" id="clear" type="button">Start a fresh conversation</button></div>
+</div></section>
+
+<main id="scroller"><div class="wrap"><div id="log" aria-live="polite"></div></div></main>
+
+<footer><div class="wrap" style="flex-direction:column;align-items:stretch;gap:0">
+  <div id="status"></div>
+  <form id="form" style="display:flex;gap:10px;align-items:center">
+    <button id="mic" type="button" aria-label="Speak to Wren"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+    <input id="text" autocomplete="off" placeholder="Type, or tap the microphone…" aria-label="Message to Wren">
+    <button id="send" type="submit">Send</button>
+  </form>
+</div></footer>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('wren.'+k); return v === null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('wren.'+k, JSON.stringify(v)); }catch(e){} }
+};
+
+const RULES = `You are Wren, a warm, quick-witted personal voice assistant from Britain who chats with the user every day.
+Language rules, never broken:
+- Write ONLY in British English: British spelling (colour, organise, centre, travelling, programme, cheque, grey, mum), British vocabulary (flat, lift, lorry, holiday, autumn, mobile, queue, biscuit, pavement, fortnight, post, bin, trainers, chemist, car park, motorway) and British grammar and idiom ("have got", "at the weekend", "in hospital", collective nouns as plural where natural).
+- Use metric units and Celsius, dates as day-month-year (8 November 2026), the 24-hour or "half past" style for times, and £ when no currency is given.
+- Never use American spellings, words or idioms, even if the user does. If the user writes in another language, reply in British English.
+- Your replies are read aloud, so keep them conversational and short (usually 1 to 4 sentences), with no markdown, lists, headings, emoji or URLs unless asked.
+- Be honest: if you do not know something current (news, weather, live prices), say so plainly rather than invent it.`;
+
+// Safety net: convert common American spellings that slip through.
+const US_GB = {color:'colour',colors:'colours',colored:'coloured',favorite:'favourite',favorites:'favourites',flavor:'flavour',honor:'honour',humor:'humour',neighbor:'neighbour',neighbors:'neighbours',behavior:'behaviour',labor:'labour',center:'centre',centers:'centres',theater:'theatre',meter:'metre',meters:'metres',liter:'litre',liters:'litres',fiber:'fibre',organize:'organise',organized:'organised',organizing:'organising',realize:'realise',realized:'realised',recognize:'recognise',apologize:'apologise',analyze:'analyse',analyzed:'analysed',traveling:'travelling',traveled:'travelled',canceled:'cancelled',jewelry:'jewellery',gray:'grey',defense:'defence',license:'licence',catalog:'catalogue',dialog:'dialogue',program:'programme',programs:'programmes',mom:'mum',vacation:'holiday',apartment:'flat',elevator:'lift',truck:'lorry',cookie:'biscuit',cookies:'biscuits',sidewalk:'pavement',gasoline:'petrol',fall:null,mail:null};
+function britishise(t){
+  return t.replace(/\b[A-Za-z]+\b/g, w => {
+    const gb = US_GB[w.toLowerCase()];
+    if (!gb) return w;
+    if (w === w.toUpperCase() && w.length > 1) return gb.toUpperCase();
+    return w[0] === w[0].toUpperCase() ? gb[0].toUpperCase() + gb.slice(1) : gb;
+  });
+}
+
+// ---------- voices (en-GB only) ----------
+const synth = window.speechSynthesis;
+let voices = [];
+function loadVoices(){
+  if (!synth) { $('voiceTag').textContent = 'No speech in this browser'; return; }
+  voices = synth.getVoices().filter(v => /^en[-_]GB/i.test(v.lang));
+  const sel = $('voice'), saved = store.get('voice', '');
+  sel.innerHTML = '';
+  if (!voices.length){ sel.innerHTML = '<option>No British voice installed</option>'; $('voiceTag').textContent = 'No en-GB voice found'; return; }
+  voices.forEach((v, i) => { const o = document.createElement('option'); o.value = v.name; o.textContent = v.name.replace(/^(Microsoft|Google)\s+/,''); sel.appendChild(o); });
+  const pick = voices.find(v => v.name === saved) || voices.find(v => /Google UK English (Female|Male)|Daniel|Serena|Kate|Libby|Sonia|Ryan/i.test(v.name)) || voices[0];
+  sel.value = pick.name; $('voiceTag').textContent = 'en-GB · ' + sel.options[sel.selectedIndex].textContent;
+}
+if (synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
+$('voice').onchange = e => { store.set('voice', e.target.value); loadVoices(); };
+$('rate').value = String(store.get('rate', '1'));
+$('rate').onchange = e => store.set('rate', e.target.value);
+
+function speak(text){
+  if (!synth || !voices.length) return;
+  synth.cancel();
+  const v = voices.find(x => x.name === $('voice').value) || voices[0];
+  // Chrome cuts off long utterances, so speak sentence by sentence.
+  (text.match(/[^.!?]+[.!?]*\s*/g) || [text]).forEach(s => {
+    const u = new SpeechSynthesisUtterance(s.trim()); u.voice = v; u.lang = 'en-GB'; u.rate = parseFloat($('rate').value) || 1;
+    synth.speak(u);
+  });
+}
+$('stop').onclick = () => synth && synth.cancel();
+
+// ---------- conversation ----------
+const log = $('log'), scroller = $('scroller');
+let history = store.get('history', []);
+function bubble(cls, text){ const d = document.createElement('div'); d.className = 'msg ' + cls; d.textContent = text; log.appendChild(d); scroller.scrollTop = scroller.scrollHeight; return d; }
+function greeting(){ const h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening') + '. Wren here. What shall we sort out today?'; }
+function render(){ log.innerHTML = ''; if (!history.length) bubble('wren', greeting()); history.forEach(m => bubble(m.role === 'user' ? 'me' : 'wren', m.content)); }
+render();
+$('clear').onclick = () => { history = []; store.set('history', history); render(); };
+
+// ---------- brain: Claude inside claude.ai, or the API key elsewhere ----------
+let sample = null, sampleChecked = false;
+const samplePromise = (window.claude && window.claude.use) ? window.claude.use('sample').then(s => { sample = s; sampleChecked = true; refreshKeyRow(); }) : Promise.resolve().then(() => { sampleChecked = true; refreshKeyRow(); });
+function refreshKeyRow(){ $('keyRow').hidden = !!sample; }
+$('apiKey').value = store.get('apiKey', '');
+$('apiKey').onchange = e => store.set('apiKey', e.target.value.trim());
+
+function recent(){ let h = history.slice(-20); while (h.length && h[0].role !== 'user') h = h.slice(1); return h; }
+
+async function ask(onText){
+  await samplePromise;
+  const msgs = recent();
+  if (sample){
+    const input = msgs.map((m, i) => ({ role: m.role, content: i === 0 ? RULES + '\n\nToday is ' + new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + '.\n\nUser: ' + m.content : m.content }));
+    const r = await sample(input, { cache: false, onText: ({text}) => onText(text) });
+    return r.text;
+  }
+  const key = store.get('apiKey', '');
+  if (!key) throw { message: 'Add your Anthropic API key in Settings so Wren can think outside Claude.' };
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+    body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 600, system: RULES + '\nToday is ' + new Date().toLocaleDateString('en-GB') + '.', messages: msgs })
+  });
+  const data = await res.json();
+  if (!res.ok) throw { message: (data.error && data.error.message) || ('Request failed (' + res.status + ').') };
+  return data.content.map(c => c.text || '').join('');
+}
+
+let busy = false;
+async function send(text){
+  text = text.trim(); if (!text || busy) return;
+  busy = true; $('status').textContent = 'Wren is thinking…';
+  if (!history.length) log.innerHTML = '';
+  history.push({ role: 'user', content: text }); bubble('me', text);
+  const out = bubble('wren', '…');
+  try{
+    const reply = britishise((await ask(t => { out.textContent = britishise(t); scroller.scrollTop = scroller.scrollHeight; })).trim()) || 'Sorry, I lost my train of thought. Could you say that again?';
+    out.textContent = reply; history.push({ role: 'assistant', content: reply }); store.set('history', history.slice(-60));
+    $('status').textContent = ''; speak(reply);
+  }catch(e){
+    out.remove(); history.pop();
+    const code = e && e.code;
+    bubble('err', code === 'not_granted' ? 'Wren needs your permission to ask Claude. Allow it when prompted, or check this page\'s Permissions.' : code === 'rate_limited' ? 'Too many messages just now. Give it a minute and try again.' : (e && e.message) || 'Something went wrong. Please try again.');
+    $('status').textContent = '';
+  }
+  busy = false;
+}
+$('form').onsubmit = e => { e.preventDefault(); const t = $('text').value; $('text').value = ''; send(t); };
+
+// ---------- microphone (en-GB recognition) ----------
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const mic = $('mic'); let rec = null, listening = false;
+function micUnavailable(msg){ mic.disabled = true; mic.title = msg; $('status').textContent = msg; }
+if (!SR) micUnavailable('Voice input needs Chrome, Edge or Safari. You can still type.');
+mic.onclick = () => {
+  if (listening){ rec && rec.stop(); return; }
+  if (synth) synth.cancel();
+  rec = new SR(); rec.lang = 'en-GB'; rec.interimResults = true; rec.continuous = false;
+  let finalText = '';
+  rec.onstart = () => { listening = true; mic.classList.add('on'); $('status').textContent = 'Listening…'; };
+  rec.onresult = ev => { let interim = ''; for (const r of ev.results){ if (r.isFinal) finalText = r[0].transcript; else interim += r[0].transcript; } $('text').value = finalText || interim; };
+  rec.onerror = ev => { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') micUnavailable('The microphone is blocked here. Type instead, or open Wren as its own page in Chrome to talk.'); else if (ev.error !== 'no-speech' && ev.error !== 'aborted') $('status').textContent = 'Didn\'t catch that (' + ev.error + ').'; };
+  rec.onend = () => { listening = false; mic.classList.remove('on'); if (!mic.disabled && $('status').textContent === 'Listening…') $('status').textContent = ''; if (finalText){ $('text').value = ''; send(finalText); } };
+  try { rec.start(); } catch(e){ micUnavailable('The microphone could not start. You can still type.'); }
+};
+
+// ---------- settings panel ----------
+$('toggleSettings').onclick = () => { const s = $('settings'); s.hidden = !s.hidden; $('toggleSettings').setAttribute('aria-expanded', String(!s.hidden)); };
+})();
+</script>
