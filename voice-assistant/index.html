@@ -70,6 +70,8 @@ footer .wrap{display:flex;gap:10px;align-items:center;padding-block:12px}
       <select id="voice"></select></label>
     <label for="rate">Speaking speed
       <select id="rate"><option value="0.9">Unhurried</option><option value="1" selected>Normal</option><option value="1.15">Brisk</option></select></label>
+    <label for="slang">British slang
+      <select id="slang"><option value="light">A touch (polite)</option><option value="medium" selected>Proper British</option><option value="heavy">Full cockney-ish banter</option></select></label>
   </div>
   <div id="keyRow" hidden>
     <label for="apiKey">Anthropic API key (needed when Wren runs outside Claude)
@@ -102,13 +104,17 @@ const RULES = `You are Wren, a warm, quick-witted personal voice assistant from 
 Language rules, never broken:
 - Write ONLY in British English: British spelling (colour, organise, centre, travelling, programme, cheque, grey, mum), British vocabulary (flat, lift, lorry, holiday, autumn, mobile, queue, biscuit, pavement, fortnight, post, bin, trainers, chemist, car park, motorway) and British grammar and idiom ("have got", "at the weekend", "in hospital", collective nouns as plural where natural).
 - Use metric units and Celsius, dates as day-month-year (8 November 2026), the 24-hour or "half past" style for times, and £ when no currency is given.
-- Never use American spellings, words or idioms, even if the user does. If the user writes in another language, reply in British English.
+- Talk like a real Brit, using everyday British slang and colloquialisms naturally: cheers, ta, brilliant, lovely, cracking, mate, sorted, knackered, gutted, chuffed, skint, faff, bits and bobs, a cuppa, fancy (as in "fancy a brew?"), reckon, quid, loo, telly, takeaway, a fortnight, "Bob's your uncle", "not my cup of tea", "having a laugh", "spot on", "cheeky", "proper", "innit" only when very casual. Never force more than the slang level below allows.
+- Never use American words, slang or idioms, even if the user does: no awesome, dude, buddy, you guys, y'all, gotten, candy, fries, cookies, soccer, movie, vacation, apartment, cell phone, restroom, trash, gas (petrol), sidewalk, sneakers, sweater, zip code, parking lot, freeway, math, "reach out", "touch base", "my bad". If the user writes in another language, reply in British English.
 - Your replies are read aloud, so keep them conversational and short (usually 1 to 4 sentences), with no markdown, lists, headings, emoji or URLs unless asked.
 - Be honest: if you do not know something current (news, weather, live prices), say so plainly rather than invent it.`;
 
 // Safety net: convert common American spellings that slip through.
-const US_GB = {color:'colour',colors:'colours',colored:'coloured',favorite:'favourite',favorites:'favourites',flavor:'flavour',honor:'honour',humor:'humour',neighbor:'neighbour',neighbors:'neighbours',behavior:'behaviour',labor:'labour',center:'centre',centers:'centres',theater:'theatre',meter:'metre',meters:'metres',liter:'litre',liters:'litres',fiber:'fibre',organize:'organise',organized:'organised',organizing:'organising',realize:'realise',realized:'realised',recognize:'recognise',apologize:'apologise',analyze:'analyse',analyzed:'analysed',traveling:'travelling',traveled:'travelled',canceled:'cancelled',jewelry:'jewellery',gray:'grey',defense:'defence',license:'licence',catalog:'catalogue',dialog:'dialogue',program:'programme',programs:'programmes',mom:'mum',vacation:'holiday',apartment:'flat',elevator:'lift',truck:'lorry',cookie:'biscuit',cookies:'biscuits',sidewalk:'pavement',gasoline:'petrol',fall:null,mail:null};
+const US_GB = {color:'colour',colors:'colours',colored:'coloured',favorite:'favourite',favorites:'favourites',flavor:'flavour',honor:'honour',humor:'humour',neighbor:'neighbour',neighbors:'neighbours',behavior:'behaviour',labor:'labour',center:'centre',centers:'centres',theater:'theatre',meter:'metre',meters:'metres',liter:'litre',liters:'litres',fiber:'fibre',organize:'organise',organized:'organised',organizing:'organising',realize:'realise',realized:'realised',recognize:'recognise',apologize:'apologise',analyze:'analyse',analyzed:'analysed',traveling:'travelling',traveled:'travelled',canceled:'cancelled',jewelry:'jewellery',gray:'grey',defense:'defence',license:'licence',catalog:'catalogue',dialog:'dialogue',program:'programme',programs:'programmes',mom:'mum',vacation:'holiday',apartment:'flat',elevator:'lift',truck:'lorry',cookie:'biscuit',cookies:'biscuits',sidewalk:'pavement',gasoline:'petrol',awesome:'brilliant',dude:'mate',buddy:'mate',gotten:'got',candy:'sweets',soccer:'football',movie:'film',movies:'films',sneakers:'trainers',sweater:'jumper',sweaters:'jumpers',flashlight:'torch',diaper:'nappy',diapers:'nappies',faucet:'tap',eggplant:'aubergine',zucchini:'courgette',cilantro:'coriander',takeout:'takeaway',drugstore:'chemist',restroom:'loo',math:'maths',closet:'wardrobe',freeway:'motorway',highway:'motorway',trash:'rubbish',garbage:'rubbish',fries:'chips',vacations:'holidays',apartments:'flats'};
+// Multi-word Americanisms, swapped before single words.
+const US_GB_PHRASES = [[/\byou guys\b/gi,'you lot'],[/\by'all\b/gi,'you lot'],[/\bcell ?phones?\b/gi,m=>/s$/i.test(m)?'mobiles':'mobile'],[/\bparking lots?\b/gi,m=>/s$/i.test(m)?'car parks':'car park'],[/\bzip ?codes?\b/gi,m=>/s$/i.test(m)?'postcodes':'postcode'],[/\bgas station\b/gi,'petrol station'],[/\bfrench fries\b/gi,'chips'],[/\bpotato chips\b/gi,'crisps'],[/\bmy bad\b/gi,'my mistake'],[/\breach out to\b/gi,'get in touch with'],[/\btouch base\b/gi,'catch up'],[/\bon the weekend\b/gi,'at the weekend'],[/\bgo figure\b/gi,'funny old world'],[/\bsounds awesome\b/gi,'sounds brilliant']];
 function britishise(t){
+  US_GB_PHRASES.forEach(([re, gb]) => { t = t.replace(re, m => { const r = typeof gb === 'function' ? gb(m) : gb; return m[0] === m[0].toUpperCase() ? r[0].toUpperCase() + r.slice(1) : r; }); });
   return t.replace(/\b[A-Za-z]+\b/g, w => {
     const gb = US_GB[w.toLowerCase()];
     if (!gb) return w;
@@ -134,6 +140,10 @@ if (synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
 $('voice').onchange = e => { store.set('voice', e.target.value); loadVoices(); };
 $('rate').value = String(store.get('rate', '1'));
 $('rate').onchange = e => store.set('rate', e.target.value);
+$('slang').value = store.get('slang', 'medium');
+$('slang').onchange = e => store.set('slang', e.target.value);
+const SLANG = { light: 'Slang level: light. Polite, standard British English with only the occasional "cheers", "lovely" or "brilliant".', medium: 'Slang level: proper British. Use one or two natural British colloquialisms in most replies.', heavy: 'Slang level: full banter. Lean into cheeky British slang and idioms (mate, innit, blimey, chuffed to bits, absolutely knackered, taking the mickey) in every reply, while staying clear and kind.' };
+function rules(){ return RULES + '\n' + (SLANG[$('slang').value] || SLANG.medium); }
 
 function speak(text){
   if (!synth || !voices.length) return;
@@ -169,7 +179,7 @@ async function ask(onText){
   await samplePromise;
   const msgs = recent();
   if (sample){
-    const input = msgs.map((m, i) => ({ role: m.role, content: i === 0 ? RULES + '\n\nToday is ' + new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + '.\n\nUser: ' + m.content : m.content }));
+    const input = msgs.map((m, i) => ({ role: m.role, content: i === 0 ? rules() + '\n\nToday is ' + new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}) + '.\n\nUser: ' + m.content : m.content }));
     const r = await sample(input, { cache: false, onText: ({text}) => onText(text) });
     return r.text;
   }
@@ -178,7 +188,7 @@ async function ask(onText){
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-    body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 600, system: RULES + '\nToday is ' + new Date().toLocaleDateString('en-GB') + '.', messages: msgs })
+    body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 600, system: rules() + '\nToday is ' + new Date().toLocaleDateString('en-GB') + '.', messages: msgs })
   });
   const data = await res.json();
   if (!res.ok) throw { message: (data.error && data.error.message) || ('Request failed (' + res.status + ').') };
