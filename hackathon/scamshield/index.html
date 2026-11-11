@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ScamShield — Scam &amp; QR-code defence</title>
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+  .tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .tabs button[aria-selected="true"]{background:var(--soft);border-color:var(--accent);font-weight:600}
+  textarea{min-height:130px;resize:vertical}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .drop{border:2px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center}
+  .drop.over{border-color:var(--accent);background:var(--soft)}
+  #preview{max-width:100%;max-height:260px;border-radius:8px;margin-top:10px;display:none}
+  .samples img{width:84px;height:84px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;image-rendering:pixelated}
+  .samples{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .samples figure{margin:0;text-align:center;font-size:.75rem;color:var(--muted);width:96px}
+  .verdict{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  .score{width:92px;height:92px;border-radius:50%;display:grid;place-items:center;flex:none;
+    background:conic-gradient(var(--c) calc(var(--p)*1%),var(--line) 0)}
+  .score div{width:72px;height:72px;border-radius:50%;background:var(--panel);display:grid;place-items:center;
+    font-size:1.6rem;font-weight:700;line-height:1}
+  .score small{display:block;font-size:.6rem;font-weight:500;color:var(--muted);text-align:center}
+  .lv-critical,.lv-high{--c:var(--bad)}.lv-caution{--c:var(--warn)}.lv-low{--c:var(--ok)}
+  .verdict h2{font-size:1.25rem;margin:0;color:var(--c)}
+  .msgview{white-space:pre-wrap;overflow-wrap:anywhere;background:var(--bg);border:1px solid var(--line);
+    border-radius:10px;padding:12px;font-size:.95rem}
+  mark{border-radius:4px;padding:0 2px;color:inherit}
+  mark.s3{background:var(--bad-bg);box-shadow:inset 0 -2px var(--bad)}
+  mark.s2{background:var(--warn-bg);box-shadow:inset 0 -2px var(--warn)}
+  mark.s1{background:var(--info-bg);box-shadow:inset 0 -2px var(--info)}
+  mark.s0{background:var(--ok-bg);box-shadow:inset 0 -2px var(--ok)}
+  .ev{border:1px solid var(--line);border-left-width:5px;border-radius:8px;padding:10px 12px;margin:8px 0}
+  .ev.s3{border-left-color:var(--bad)}.ev.s2{border-left-color:var(--warn)}.ev.s1{border-left-color:var(--info)}.ev.s0{border-left-color:var(--ok)}
+  .ev b{display:block}
+  .ev q{display:block;color:var(--muted);font-size:.85rem;margin:2px 0 4px;overflow-wrap:anywhere}
+  dl.kv{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:6px 0;font-size:.92rem}
+  dl.kv dt{color:var(--muted)}dl.kv dd{margin:0;overflow-wrap:anywhere}
+  details summary{cursor:pointer;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>🛡️ ScamShield</h1>
+      <p data-i="tagline"></p>
+    </div>
+    <div class="seg" role="group" aria-label="Language">
+      <button data-lang="en" aria-pressed="true">English</button>
+      <button data-lang="hi" aria-pressed="false">हिन्दी</button>
+    </div>
+  </header>
+
+  <div class="note ok small" data-i="privacy"></div>
+
+  <section class="card">
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-text" aria-selected="true" data-i="tabText"></button>
+      <button role="tab" id="tab-img" aria-selected="false" data-i="tabImg"></button>
+    </div>
+
+    <div id="pane-text">
+      <label for="msg" class="small muted" data-i="pasteLabel"></label>
+      <textarea id="msg" spellcheck="false"></textarea>
+      <div class="small muted" style="margin-top:10px" data-i="tryLabel"></div>
+      <div class="chips" id="textSamples"></div>
+      <div class="row">
+        <button class="primary" id="go" data-i="analyze"></button>
+        <button id="clear" data-i="clear"></button>
+      </div>
+    </div>
+
+    <div id="pane-img" hidden>
+      <div class="drop" id="drop">
+        <div data-i="dropHint"></div>
+        <div class="row" style="justify-content:center">
+          <button class="primary" id="pick" data-i="choose"></button>
+          <input type="file" id="file" accept="image/*" hidden>
+        </div>
+        <img id="preview" alt="">
+      </div>
+      <div id="imgStatus" class="small" style="margin-top:8px"></div>
+      <div class="row"><button id="ocr" hidden data-i="ocrBtn"></button></div>
+      <div class="small muted" style="margin-top:12px" data-i="tryQr"></div>
+      <div class="samples" id="qrSamples"></div>
+    </div>
+  </section>
+
+  <div id="result" aria-live="polite"></div>
+
+  <footer data-i="footer"></footer>
+</div>
+<canvas id="cv" hidden></canvas>
+<script src="vendor/jsQR.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

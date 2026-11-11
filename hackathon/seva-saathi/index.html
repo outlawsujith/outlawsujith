@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Seva Saathi — Government services assistant</title>
+<link rel="stylesheet" href="../assets/base.css">
+<style>
+  #chat{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+  .msg{max-width:92%;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:var(--panel)}
+  .msg.user{align-self:flex-end;background:var(--accent);color:var(--accent-ink);border-color:var(--accent);border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-start;border-bottom-left-radius:4px}
+  .msg.bot.wide{max-width:100%;width:100%}
+  .msg p{margin:0 0 6px}.msg p:last-child{margin-bottom:0}
+  .msg.old .chips button{pointer-events:none;opacity:.55}
+  .composer{position:sticky;bottom:0;background:var(--bg);padding:10px 0 12px;display:flex;gap:8px}
+  .composer input{flex:1}
+  .pick{display:block;width:100%;text-align:left;border-radius:12px;margin-top:8px;padding:10px 12px}
+  .pick b{display:block}.pick span{color:var(--muted);font-size:.88rem}
+  .res h2{font-size:1.1rem;margin:0 0 4px}
+  .res h3{font-size:.95rem;margin:16px 0 6px}
+  .reason{display:flex;gap:8px;align-items:flex-start;margin:6px 0}
+  .reason .ic{flex:none;width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:.8rem;font-weight:700}
+  .ic.pass{background:var(--ok-bg);color:var(--ok)}.ic.fail{background:var(--bad-bg);color:var(--bad)}.ic.unknown{background:var(--warn-bg);color:var(--warn)}
+  .check{list-style:none;padding:0}
+  .check label{display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:4px 0}
+  .check input{width:18px;height:18px;margin-top:3px;flex:none}
+  .check input:checked + span{text-decoration:line-through;color:var(--muted)}
+  sup.c a{text-decoration:none;font-weight:600}
+  .srcs li{overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>🏛️ Seva Saathi</h1>
+      <p id="tagline"></p>
+    </div>
+    <div class="seg" role="group" aria-label="Language">
+      <button data-lang="en" aria-pressed="true">English</button>
+      <button data-lang="hi" aria-pressed="false">हिन्दी</button>
+    </div>
+  </header>
+  <div id="chat" aria-live="polite"></div>
+  <form class="composer" id="form" autocomplete="off">
+    <input type="text" id="input" aria-label="Message">
+    <button class="primary" id="send"></button>
+  </form>
+  <footer id="foot"></footer>
+</div>
+<script src="kb.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

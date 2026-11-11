@@ -1,0 +1,362 @@
+/* Seva Saathi knowledge base.
+ *
+ * IMPORTANT: this is SEED DATA for the prototype. It was drafted by hand from general knowledge of each
+ * scheme and was NOT fetched live from the official sites. `snapshot` records when the entry was drafted.
+ * The app therefore shows every entry's date, flags entries older than STALE_AFTER_MONTHS, and lists the
+ * points that change often under `caveats`. In the real pipeline (see ../PIPELINE.md) these records are
+ * produced by the ingestion job from official pages, with the retrieval date and source passage attached.
+ */
+(function (root) {
+  'use strict';
+  const L = (en, hi) => ({ en, hi });
+  const P = t => ({ s: 'pass', t }), F = t => ({ s: 'fail', t }), U = t => ({ s: 'unknown', t });
+  const yn = v => v === 'yes' ? true : v === 'no' ? false : null;
+
+  const STALE_AFTER_MONTHS = 6;
+  const SNAPSHOT = '2026-03';
+
+  /* ---- questions the assistant may ask ---- */
+  const YN = [['yes', L('Yes', 'हां')], ['no', L('No', 'नहीं')], ['unsure', L('Not sure', 'पता नहीं')]];
+  const QUESTIONS = {
+    age: { type: 'num', q: L('How old is the person applying (in years)?', 'आवेदन करने वाले व्यक्ति की उम्र कितनी है (वर्षों में)?') },
+    gender: { type: 'opt', q: L('Is the applicant a woman?', 'क्या आवेदक महिला हैं?'), opts: [['female', L('Yes, a woman', 'हां, महिला')], ['other', L('No', 'नहीं')]] },
+    land: { type: 'opt', q: L('Does your family own cultivable farm land in its own name?', 'क्या आपके परिवार के नाम पर खेती योग्य जमीन है?'), opts: YN },
+    taxpayer: { type: 'opt', q: L('Did you (or, for PM-KISAN, anyone in the family) pay income tax last year?', 'क्या आपने (या PM-KISAN के लिए परिवार में किसी ने) पिछले साल आयकर भरा?'), opts: YN },
+    govtjob: { type: 'opt', q: L('Is anyone in the family a serving or retired government employee (other than Group D / MTS), or drawing a pension of ₹10,000 or more a month?', 'क्या परिवार में कोई सेवारत या सेवानिवृत्त सरकारी कर्मचारी है (ग्रुप डी / MTS को छोड़कर), या ₹10,000 या अधिक मासिक पेंशन पाता है?'), opts: YN },
+    lpg: { type: 'opt', q: L('Does your household already have an LPG (cooking gas) connection?', 'क्या आपके घर में पहले से LPG (रसोई गैस) कनेक्शन है?'), opts: YN },
+    girlAge: { type: 'num', q: L('How old is the girl child (in years; enter 0 for a baby under one)?', 'बालिका की उम्र कितनी है (वर्षों में; एक साल से छोटी हो तो 0 लिखें)?') },
+    bank: { type: 'opt', q: L('Do you have a savings account in a bank or post office?', 'क्या आपका बैंक या डाकघर में बचत खाता है?'), opts: YN },
+    trade: { type: 'opt', q: L('Do you work with your hands and tools in a traditional trade (carpenter, tailor, potter, blacksmith, goldsmith, barber, cobbler, mason, washerman, etc.) on a self-employed basis?', 'क्या आप किसी पारंपरिक काम (बढ़ई, दर्जी, कुम्हार, लोहार, सुनार, नाई, मोची, राजमिस्त्री, धोबी आदि) में अपने हाथ और औजारों से स्वरोजगार करते हैं?'), opts: YN },
+    priorLoan: { type: 'opt', q: L('In the last 5 years, have you taken a loan under PMEGP, PM SVANidhi or Mudra that is still unpaid?', 'क्या पिछले 5 साल में आपने PMEGP, PM स्वनिधि या मुद्रा के तहत ऐसा ऋण लिया है जो अभी चुकाया नहीं गया?'), opts: YN },
+    student: { type: 'opt', q: L('Is the applicant currently enrolled as a student in a school, college or institute in India?', 'क्या आवेदक अभी भारत के किसी स्कूल, कॉलेज या संस्थान में विद्यार्थी है?'), opts: YN },
+    hasPan: { type: 'opt', q: L('Have you ever been allotted a PAN before?', 'क्या आपको पहले कभी PAN मिला है?'), opts: YN },
+    aadhaarMobile: { type: 'opt', q: L('Is your mobile number linked to your Aadhaar?', 'क्या आपका मोबाइल नंबर आधार से जुड़ा है?'), opts: YN },
+    vehicle: { type: 'opt', q: L('Which vehicle do you want the licence for?', 'आपको किस वाहन के लिए लाइसेंस चाहिए?'), opts: [['gearless', L('Two-wheeler without gear (up to 50cc)', 'बिना गियर का दोपहिया (50cc तक)')], ['gear', L('Two-wheeler with gear / car', 'गियर वाला दोपहिया / कार')], ['transport', L('Commercial / transport vehicle', 'व्यावसायिक / परिवहन वाहन')]] },
+    tatkal: { type: 'opt', q: L('Do you need the passport urgently (Tatkaal)?', 'क्या आपको पासपोर्ट जल्दी चाहिए (तत्काल)?'), opts: [['no', L('No, normal', 'नहीं, सामान्य')], ['yes', L('Yes, Tatkaal', 'हां, तत्काल')]] },
+  };
+
+  const CATEGORIES = [
+    { id: 'farm', label: L('Farming', 'खेती') }, { id: 'health', label: L('Health', 'स्वास्थ्य') },
+    { id: 'women', label: L('Women & children', 'महिला और बच्चे') }, { id: 'pension', label: L('Pension & savings', 'पेंशन और बचत') },
+    { id: 'work', label: L('Livelihood', 'रोजगार') }, { id: 'edu', label: L('Education', 'शिक्षा') },
+    { id: 'id', label: L('ID & documents', 'पहचान और दस्तावेज') },
+  ];
+
+  const AADHAAR = { t: L('Aadhaar card', 'आधार कार्ड') };
+  const PHOTO = { t: L('Recent passport-size photograph', 'हाल का पासपोर्ट आकार का फोटो') };
+  const MOBILE = { t: L('Mobile number linked to Aadhaar (for OTP)', 'आधार से जुड़ा मोबाइल नंबर (OTP के लिए)') };
+  const BANKDOC = { t: L('Bank account passbook / details (account number and IFSC), linked to Aadhaar', 'बैंक खाते की पासबुक / विवरण (खाता संख्या और IFSC), आधार से जुड़ा') };
+
+  const KB = [
+    {
+      id: 'pm-kisan', cat: 'farm', snapshot: SNAPSHOT,
+      keys: ['pm kisan', 'pmkisan', 'kisan', 'farmer', 'farming', 'agriculture', 'kisan samman nidhi', '6000', 'किसान', 'खेती', 'सम्मान निधि', 'पीएम किसान', 'kheti', 'krishi', 'कृषि'],
+      name: L('PM-KISAN (Pradhan Mantri Kisan Samman Nidhi)', 'पीएम-किसान (प्रधानमंत्री किसान सम्मान निधि)'),
+      summary: L('Income support for land-holding farmer families.', 'भूमिधारक किसान परिवारों के लिए आय सहायता।'),
+      benefit: L('₹6,000 a year, paid directly into the bank account in three instalments of ₹2,000.', '₹6,000 प्रति वर्ष, ₹2,000 की तीन किस्तों में सीधे बैंक खाते में।'),
+      sources: [{ title: 'PM-KISAN official portal', url: 'https://pmkisan.gov.in/' }, { title: 'myScheme: PM-KISAN', url: 'https://www.myscheme.gov.in/schemes/pm-kisan' }],
+      ask: ['land', 'taxpayer', 'govtjob'],
+      rules: [
+        p => { const v = yn(p.land); return v === null ? U(L('Could not confirm land ownership. The scheme is for families with cultivable land in their name.', 'जमीन के स्वामित्व की पुष्टि नहीं हो सकी। योजना उन परिवारों के लिए है जिनके नाम खेती योग्य जमीन है।')) : v ? P(L('Family owns cultivable land in its name.', 'परिवार के नाम पर खेती योग्य जमीन है।')) : F(L('The scheme covers only families that own cultivable land in their name (as per state land records).', 'योजना केवल उन परिवारों के लिए है जिनके नाम (राज्य के भू-अभिलेख के अनुसार) खेती योग्य जमीन है।')); },
+        p => { const v = yn(p.taxpayer); return v === null ? U(L('Could not confirm income-tax status. Families where a member paid income tax in the last assessment year are excluded.', 'आयकर की स्थिति की पुष्टि नहीं हो सकी। जिन परिवारों के किसी सदस्य ने पिछले निर्धारण वर्ष में आयकर भरा, वे बाहर हैं।')) : v ? F(L('Families where a member paid income tax in the last assessment year are excluded.', 'जिन परिवारों के किसी सदस्य ने पिछले निर्धारण वर्ष में आयकर भरा, वे योजना से बाहर हैं।')) : P(L('No income-tax payer in the family.', 'परिवार में कोई आयकर दाता नहीं।')); },
+        p => { const v = yn(p.govtjob); return v === null ? U(L('Could not confirm the government-employee / pensioner exclusion.', 'सरकारी कर्मचारी / पेंशनभोगी वाले अपवाद की पुष्टि नहीं हो सकी।')) : v ? F(L('Families of serving/retired government employees (except Group D/MTS) and pensioners drawing ₹10,000+ a month are excluded.', 'सेवारत/सेवानिवृत्त सरकारी कर्मचारियों (ग्रुप डी/MTS को छोड़कर) और ₹10,000+ मासिक पेंशन पाने वालों के परिवार बाहर हैं।')) : P(L('No excluded government employee or pensioner in the family.', 'परिवार में कोई अपवर्जित सरकारी कर्मचारी या पेंशनभोगी नहीं।')); },
+      ],
+      docs: [AADHAAR, { t: L('Land ownership record (khatauni / RoR / patta, as used in your state)', 'भूमि स्वामित्व का रिकॉर्ड (खतौनी / RoR / पट्टा, जैसा आपके राज्य में चलता है)') }, BANKDOC, MOBILE],
+      steps: [
+        L('Register under "New Farmer Registration" on pmkisan.gov.in, or at a Common Service Centre (CSC).', 'pmkisan.gov.in पर "New Farmer Registration" में, या जन सेवा केंद्र (CSC) पर पंजीकरण करें।'),
+        L('Complete e-KYC (OTP, fingerprint at CSC, or face authentication in the PM-KISAN app).', 'e-KYC पूरा करें (OTP, CSC पर फिंगरप्रिंट, या PM-KISAN ऐप में चेहरा प्रमाणीकरण)।'),
+        L('The state verifies your land records; this can take a few weeks.', 'राज्य आपके भू-अभिलेख सत्यापित करता है; इसमें कुछ हफ्ते लग सकते हैं।'),
+        L('Track progress under "Know Your Status" on the portal. Helpline: 155261 / 011-24300606.', 'पोर्टल पर "Know Your Status" में स्थिति देखें। हेल्पलाइन: 155261 / 011-24300606।'),
+      ],
+      caveats: [L('Some states now require a Farmer ID (farmer registry) for new registrations. Check your state\'s current rule.', 'कुछ राज्यों में नए पंजीकरण के लिए अब किसान ID (फार्मर रजिस्ट्री) जरूरी है। अपने राज्य का मौजूदा नियम जांचें।')],
+    },
+    {
+      id: 'pmjay', cat: 'health', snapshot: SNAPSHOT,
+      keys: ['ayushman', 'ayushman bharat', 'pmjay', 'pm-jay', 'health insurance', 'hospital', 'treatment', 'golden card', 'health card', 'vay vandana', 'आयुष्मान', 'इलाज', 'स्वास्थ्य बीमा', 'अस्पताल', 'ilaj', 'bima', 'बीमा', 'medical'],
+      name: L('Ayushman Bharat PM-JAY (health cover)', 'आयुष्मान भारत PM-JAY (स्वास्थ्य सुरक्षा)'),
+      summary: L('Cashless hospital treatment for eligible families and for all senior citizens aged 70+.', 'पात्र परिवारों और 70+ उम्र के सभी वरिष्ठ नागरिकों के लिए कैशलेस अस्पताल इलाज।'),
+      benefit: L('Cover of up to ₹5 lakh per family per year for hospitalisation at empanelled public and private hospitals.', 'सूचीबद्ध सरकारी और निजी अस्पतालों में भर्ती इलाज के लिए प्रति परिवार प्रति वर्ष ₹5 लाख तक की सुरक्षा।'),
+      sources: [{ title: 'National Health Authority: PM-JAY', url: 'https://nha.gov.in/PM-JAY' }, { title: 'PM-JAY beneficiary portal ("Am I Eligible")', url: 'https://beneficiary.nha.gov.in/' }],
+      stepSrc: 2,
+      ask: ['age'],
+      rules: [
+        p => p.age == null ? U(L('Age not given. Everyone aged 70 or above is covered regardless of income.', 'उम्र नहीं बताई गई। 70 या अधिक उम्र के सभी लोग आय की परवाह किए बिना शामिल हैं।'))
+          : p.age >= 70 ? P(L('Aged 70 or above: covered under the senior-citizen extension (Ayushman Vay Vandana card), whatever the income.', '70 या अधिक उम्र: वरिष्ठ नागरिक विस्तार (आयुष्मान वय वंदना कार्ड) के तहत शामिल, आय चाहे जो हो।'))
+          : U(L('Under 70: eligibility depends on whether your family is in the beneficiary list (based on SECC 2011 data and state lists). This cannot be decided from a few questions. Use "Am I Eligible" on the beneficiary portal or call 14555.', '70 से कम: पात्रता इस पर निर्भर है कि आपका परिवार लाभार्थी सूची (SECC 2011 आंकड़ों और राज्य सूचियों पर आधारित) में है या नहीं। कुछ सवालों से यह तय नहीं हो सकता। लाभार्थी पोर्टल पर "Am I Eligible" देखें या 14555 पर कॉल करें।')),
+      ],
+      docs: [AADHAAR, { t: L('Ration card or state family ID (to match your family in the list)', 'राशन कार्ड या राज्य की परिवार ID (सूची में परिवार मिलाने के लिए)'), if: p => !(p.age >= 70) }, MOBILE],
+      steps: [
+        L('Check eligibility at beneficiary.nha.gov.in ("Am I Eligible"), in the Ayushman app, or by calling 14555.', 'beneficiary.nha.gov.in ("Am I Eligible"), आयुष्मान ऐप, या 14555 पर कॉल करके पात्रता जांचें।'),
+        L('Complete Aadhaar e-KYC to generate your Ayushman card (online, at a CSC, or at the help desk of an empanelled hospital).', 'आयुष्मान कार्ड बनाने के लिए आधार e-KYC पूरा करें (ऑनलाइन, CSC पर, या सूचीबद्ध अस्पताल के हेल्प डेस्क पर)।'),
+        L('For treatment, show the card at an empanelled hospital\'s Ayushman desk. Treatment is cashless; you should not be asked to pay.', 'इलाज के लिए सूचीबद्ध अस्पताल के आयुष्मान डेस्क पर कार्ड दिखाएं। इलाज कैशलेस है; आपसे पैसे नहीं मांगे जाने चाहिए।'),
+      ],
+      caveats: [L('Coverage rules differ by state: some states run or merge their own scheme and a few have joined only recently. Confirm for your state.', 'राज्य के अनुसार नियम अलग हैं: कुछ राज्य अपनी योजना चलाते या मिलाते हैं और कुछ हाल ही में जुड़े हैं। अपने राज्य के लिए पुष्टि करें।')],
+    },
+    {
+      id: 'ujjwala', cat: 'women', snapshot: SNAPSHOT,
+      keys: ['ujjwala', 'pmuy', 'lpg', 'gas connection', 'gas cylinder', 'cooking gas', 'free gas', 'उज्ज्वला', 'गैस', 'सिलेंडर', 'गैस कनेक्शन', 'rasoi gas', 'रसोई गैस', 'cylinder'],
+      name: L('PM Ujjwala Yojana (LPG connection)', 'प्रधानमंत्री उज्ज्वला योजना (LPG कनेक्शन)'),
+      summary: L('A deposit-free LPG connection for women from poor households.', 'गरीब परिवारों की महिलाओं के लिए बिना जमा राशि का LPG कनेक्शन।'),
+      benefit: L('Deposit-free connection in the woman\'s name, with the first refill and a stove provided free.', 'महिला के नाम पर बिना जमा राशि का कनेक्शन, पहला रिफिल और चूल्हा मुफ्त।'),
+      sources: [{ title: 'PM Ujjwala Yojana official site', url: 'https://pmuy.gov.in/' }],
+      ask: ['gender', 'age', 'lpg'],
+      rules: [
+        p => p.gender == null ? U(L('The connection is issued only in the name of an adult woman of the household.', 'कनेक्शन केवल घर की वयस्क महिला के नाम पर जारी होता है।')) : p.gender === 'female' ? P(L('Applicant is a woman.', 'आवेदक महिला हैं।')) : F(L('The connection is issued only in the name of an adult woman of the household. A woman in your family can apply.', 'कनेक्शन केवल घर की वयस्क महिला के नाम पर जारी होता है। आपके परिवार की कोई महिला आवेदन कर सकती है।')),
+        p => p.age == null ? U(L('Applicant must be at least 18.', 'आवेदक की उम्र कम से कम 18 होनी चाहिए।')) : p.age >= 18 ? P(L('Applicant is 18 or older.', 'आवेदक 18 या उससे अधिक उम्र की हैं।')) : F(L('Applicant must be at least 18.', 'आवेदक की उम्र कम से कम 18 होनी चाहिए।')),
+        p => { const v = yn(p.lpg); return v === null ? U(L('The household must not already have an LPG connection from any oil company.', 'घर में किसी भी तेल कंपनी का LPG कनेक्शन पहले से नहीं होना चाहिए।')) : v ? F(L('Households that already have an LPG connection are not eligible.', 'जिन घरों में पहले से LPG कनेक्शन है, वे पात्र नहीं हैं।')) : P(L('No existing LPG connection in the household.', 'घर में पहले से कोई LPG कनेक्शन नहीं।')); },
+        () => U(L('The household must also be a poor household under one of the scheme\'s categories; the distributor verifies this from your documents.', 'परिवार योजना की किसी श्रेणी के तहत गरीब परिवार भी होना चाहिए; वितरक आपके दस्तावेजों से इसकी जांच करता है।')),
+      ],
+      docs: [{ t: L('Filled KYC application form (from the distributor or pmuy.gov.in)', 'भरा हुआ KYC आवेदन पत्र (वितरक या pmuy.gov.in से)') }, AADHAAR, { t: L('Ration card, or another state-issued document listing family members', 'राशन कार्ड, या परिवार के सदस्यों की सूची वाला राज्य द्वारा जारी अन्य दस्तावेज') }, BANKDOC, PHOTO,
+        { t: L('Self-declaration of address (if you are a migrant and your Aadhaar address is different)', 'पते की स्व-घोषणा (यदि आप प्रवासी हैं और आधार का पता अलग है)') }],
+      steps: [
+        L('Apply online at pmuy.gov.in (choose Indane, Bharatgas or HP Gas) or at the nearest LPG distributor.', 'pmuy.gov.in पर ऑनलाइन (Indane, Bharatgas या HP Gas चुनें) या नजदीकी LPG वितरक के यहां आवेदन करें।'),
+        L('Submit the KYC form and documents; the distributor checks that no other connection exists.', 'KYC फॉर्म और दस्तावेज जमा करें; वितरक जांचता है कि कोई और कनेक्शन तो नहीं।'),
+        L('After approval the connection is installed at your home.', 'मंजूरी के बाद कनेक्शन आपके घर पर लगाया जाता है।'),
+      ],
+      caveats: [L('The per-cylinder subsidy amount and the number of subsidised refills are revised by the government from time to time.', 'प्रति सिलेंडर सब्सिडी की राशि और सब्सिडी वाले रिफिल की संख्या सरकार समय-समय पर बदलती है।')],
+    },
+    {
+      id: 'sukanya', cat: 'women', snapshot: SNAPSHOT,
+      keys: ['sukanya', 'sukanya samriddhi', 'ssy', 'girl child', 'daughter', 'beti', 'savings for daughter', 'सुकन्या', 'बेटी', 'बालिका', 'सुकन्या समृद्धि', 'ladki', 'लड़की'],
+      name: L('Sukanya Samriddhi Account (savings for a girl child)', 'सुकन्या समृद्धि खाता (बालिका के लिए बचत)'),
+      summary: L('A government small-savings account opened by a parent or guardian in a girl\'s name.', 'माता-पिता या अभिभावक द्वारा बालिका के नाम पर खोला जाने वाला सरकारी लघु बचत खाता।'),
+      benefit: L('Deposit ₹250 to ₹1.5 lakh a year for 15 years; the account matures 21 years after opening. Deposits qualify for Section 80C deduction under the old tax regime.', '15 साल तक हर साल ₹250 से ₹1.5 लाख जमा करें; खाता खुलने के 21 साल बाद परिपक्व होता है। पुरानी कर व्यवस्था में जमा पर धारा 80C की छूट मिलती है।'),
+      sources: [{ title: 'National Savings Institute: Sukanya Samriddhi Account', url: 'https://www.nsiindia.gov.in/' }, { title: 'India Post: savings schemes', url: 'https://www.indiapost.gov.in/' }],
+      ask: ['girlAge'],
+      rules: [
+        p => p.girlAge == null ? U(L('The account can be opened only before the girl turns 10.', 'खाता केवल बालिका के 10 साल की होने से पहले खोला जा सकता है।')) : p.girlAge < 10 ? P(L('The girl is under 10.', 'बालिका 10 साल से छोटी है।')) : F(L('The account can be opened only before the girl turns 10.', 'खाता केवल बालिका के 10 साल की होने से पहले खोला जा सकता है।')),
+        () => U(L('Only one account per girl, and for at most two girls in a family (a third is allowed for twins/triplets).', 'हर बालिका का एक ही खाता, और एक परिवार में अधिकतम दो बालिकाओं के लिए (जुड़वां/तीन बच्चों के मामले में तीसरा मान्य)।')),
+      ],
+      docs: [{ t: L('Account opening form (from the post office or bank)', 'खाता खोलने का फॉर्म (डाकघर या बैंक से)') }, { t: L('Girl\'s birth certificate', 'बालिका का जन्म प्रमाण पत्र') }, { t: L('Parent/guardian\'s Aadhaar and PAN (identity and address proof)', 'माता-पिता/अभिभावक का आधार और PAN (पहचान और पते का प्रमाण)') }, { t: L('Photograph of the parent/guardian', 'माता-पिता/अभिभावक का फोटो') }, { t: L('First deposit (minimum ₹250)', 'पहली जमा राशि (न्यूनतम ₹250)') }],
+      steps: [
+        L('Visit a post office or an authorised bank branch with the documents.', 'दस्तावेजों के साथ डाकघर या अधिकृत बैंक शाखा में जाएं।'),
+        L('Fill the form, make the first deposit and collect the passbook.', 'फॉर्म भरें, पहली राशि जमा करें और पासबुक लें।'),
+        L('Deposit at least ₹250 every financial year to keep the account active.', 'खाता सक्रिय रखने के लिए हर वित्त वर्ष कम से कम ₹250 जमा करें।'),
+      ],
+      caveats: [L('The interest rate is reset by the Ministry of Finance every quarter, so no rate is quoted here. Check the current rate at the post office or on the NSI site.', 'ब्याज दर वित्त मंत्रालय हर तिमाही तय करता है, इसलिए यहां कोई दर नहीं दी गई। मौजूदा दर डाकघर या NSI साइट पर देखें।')],
+    },
+    {
+      id: 'apy', cat: 'pension', snapshot: SNAPSHOT,
+      keys: ['atal pension', 'apy', 'pension', 'old age', 'retirement', 'अटल पेंशन', 'पेंशन', 'बुढ़ापा', 'budhapa', 'vridha'],
+      name: L('Atal Pension Yojana (APY)', 'अटल पेंशन योजना (APY)'),
+      summary: L('A guaranteed monthly pension after 60 for workers, mainly in the unorganised sector.', 'मुख्य रूप से असंगठित क्षेत्र के कामगारों के लिए 60 के बाद गारंटीशुदा मासिक पेंशन।'),
+      benefit: L('Guaranteed pension of ₹1,000 to ₹5,000 a month from age 60, depending on the amount you choose and contribute.', '60 की उम्र से ₹1,000 से ₹5,000 मासिक गारंटीशुदा पेंशन, आपके चुने और जमा किए गए अंशदान के अनुसार।'),
+      sources: [{ title: 'PFRDA: Atal Pension Yojana', url: 'https://www.pfrda.org.in/' }, { title: 'Jan Suraksha portal', url: 'https://www.jansuraksha.gov.in/' }],
+      ask: ['age', 'bank', 'taxpayer'],
+      rules: [
+        p => p.age == null ? U(L('You must be between 18 and 40 to join.', 'शामिल होने के लिए उम्र 18 से 40 के बीच होनी चाहिए।')) : (p.age >= 18 && p.age <= 40) ? P(L('Age is between 18 and 40.', 'उम्र 18 से 40 के बीच है।')) : F(L('Only people aged 18 to 40 can join.', 'केवल 18 से 40 उम्र के लोग शामिल हो सकते हैं।')),
+        p => { const v = yn(p.bank); return v === null ? U(L('A savings account is needed for the auto-debit.', 'ऑटो-डेबिट के लिए बचत खाता जरूरी है।')) : v ? P(L('Has a savings account for auto-debit.', 'ऑटो-डेबिट के लिए बचत खाता है।')) : F(L('A savings bank or post-office account is required first. You can open a zero-balance Jan Dhan account and then join.', 'पहले बैंक या डाकघर का बचत खाता जरूरी है। आप जीरो-बैलेंस जन धन खाता खोलकर फिर शामिल हो सकते हैं।')); },
+        p => { const v = yn(p.taxpayer); return v === null ? U(L('Income-tax payers cannot join (rule in force since 1 October 2022).', 'आयकर दाता शामिल नहीं हो सकते (1 अक्टूबर 2022 से लागू नियम)।')) : v ? F(L('People who are or have been income-tax payers cannot join (rule in force since 1 October 2022).', 'जो आयकर दाता हैं या रहे हैं, वे शामिल नहीं हो सकते (1 अक्टूबर 2022 से लागू नियम)।')) : P(L('Not an income-tax payer.', 'आयकर दाता नहीं हैं।')); },
+      ],
+      docs: [{ t: L('APY registration form (from your bank or post office)', 'APY पंजीकरण फॉर्म (अपने बैंक या डाकघर से)') }, AADHAAR, { t: L('Savings account number', 'बचत खाता संख्या') }, { t: L('Mobile number', 'मोबाइल नंबर') }],
+      steps: [
+        L('Ask your bank branch or post office for APY, or use your bank\'s net-banking / mobile app.', 'अपनी बैंक शाखा या डाकघर में APY के लिए कहें, या बैंक के नेट-बैंकिंग / मोबाइल ऐप का उपयोग करें।'),
+        L('Choose the pension amount (₹1,000 to ₹5,000) and the monthly, quarterly or half-yearly contribution.', 'पेंशन राशि (₹1,000 से ₹5,000) और मासिक, तिमाही या छमाही अंशदान चुनें।'),
+        L('Keep enough balance for the auto-debit; you get a PRAN number as acknowledgement.', 'ऑटो-डेबिट के लिए खाते में पर्याप्त राशि रखें; पावती के रूप में PRAN नंबर मिलता है।'),
+      ],
+      caveats: [L('The contribution depends on your age at joining and the pension chosen. Use the official contribution chart rather than any figure quoted by an agent.', 'अंशदान शामिल होने की उम्र और चुनी गई पेंशन पर निर्भर है। किसी एजेंट के बताए आंकड़े की जगह आधिकारिक अंशदान चार्ट देखें।')],
+    },
+    {
+      id: 'vishwakarma', cat: 'work', snapshot: SNAPSHOT,
+      keys: ['vishwakarma', 'artisan', 'craftsman', 'carpenter', 'tailor', 'potter', 'blacksmith', 'barber', 'cobbler', 'mason', 'toolkit', 'karigar', 'विश्वकर्मा', 'कारीगर', 'बढ़ई', 'दर्जी', 'कुम्हार', 'लोहार', 'नाई', 'मोची', 'shilpkar', 'loan for artisan'],
+      name: L('PM Vishwakarma (for artisans and craftspeople)', 'पीएम विश्वकर्मा (कारीगरों और शिल्पकारों के लिए)'),
+      summary: L('Recognition, training, toolkit support and low-interest credit for people in 18 traditional trades.', '18 पारंपरिक व्यवसायों के लोगों के लिए पहचान, प्रशिक्षण, टूलकिट सहायता और कम ब्याज पर ऋण।'),
+      benefit: L('PM Vishwakarma certificate and ID card; skill training with a daily stipend; toolkit incentive of up to ₹15,000; collateral-free loans of up to ₹1 lakh and then ₹2 lakh at 5% interest.', 'पीएम विश्वकर्मा प्रमाण पत्र और ID कार्ड; दैनिक वजीफे के साथ कौशल प्रशिक्षण; ₹15,000 तक टूलकिट प्रोत्साहन; 5% ब्याज पर ₹1 लाख और फिर ₹2 लाख तक बिना गारंटी ऋण।'),
+      sources: [{ title: 'PM Vishwakarma official portal', url: 'https://pmvishwakarma.gov.in/' }],
+      ask: ['trade', 'age', 'priorLoan', 'govtjob'],
+      rules: [
+        p => { const v = yn(p.trade); return v === null ? U(L('You must be self-employed in one of the 18 listed family-based traditional trades.', 'आपको सूचीबद्ध 18 पारंपरिक पारिवारिक व्यवसायों में से किसी में स्वरोजगार होना चाहिए।')) : v ? P(L('Self-employed in a traditional hand-and-tool trade (the exact trade must be among the 18 listed).', 'पारंपरिक हस्त-औजार व्यवसाय में स्वरोजगार (सटीक व्यवसाय सूचीबद्ध 18 में होना चाहिए)।')) : F(L('The scheme is only for artisans and craftspeople self-employed in the 18 listed traditional trades.', 'योजना केवल सूचीबद्ध 18 पारंपरिक व्यवसायों में स्वरोजगार करने वाले कारीगरों और शिल्पकारों के लिए है।')); },
+        p => p.age == null ? U(L('Minimum age is 18 on the date of registration.', 'पंजीकरण की तारीख पर न्यूनतम उम्र 18 है।')) : p.age >= 18 ? P(L('Aged 18 or above.', 'उम्र 18 या अधिक।')) : F(L('Minimum age is 18 on the date of registration.', 'पंजीकरण की तारीख पर न्यूनतम उम्र 18 है।')),
+        p => { const v = yn(p.priorLoan); return v === null ? U(L('You should not have an unpaid loan under PMEGP, PM SVANidhi or Mudra taken in the last 5 years.', 'पिछले 5 साल में PMEGP, PM स्वनिधि या मुद्रा के तहत लिया गया कोई बकाया ऋण नहीं होना चाहिए।')) : v ? F(L('People with an unpaid loan under PMEGP, PM SVANidhi or Mudra from the last 5 years are not eligible until it is fully repaid.', 'जिनका पिछले 5 साल का PMEGP, PM स्वनिधि या मुद्रा ऋण बकाया है, वे पूरा चुकाने तक पात्र नहीं हैं।')) : P(L('No unpaid loan under similar central credit schemes.', 'समान केंद्रीय ऋण योजनाओं का कोई बकाया ऋण नहीं।')); },
+        p => { const v = yn(p.govtjob); return v === null ? U(L('The applicant and family members must not be in government service.', 'आवेदक और परिवार के सदस्य सरकारी सेवा में नहीं होने चाहिए।')) : v ? F(L('People in government service and their family members are not eligible.', 'सरकारी सेवा में कार्यरत व्यक्ति और उनके परिवार के सदस्य पात्र नहीं हैं।')) : P(L('No one in the family is in government service.', 'परिवार में कोई सरकारी सेवा में नहीं।')); },
+      ],
+      docs: [AADHAAR, MOBILE, BANKDOC, { t: L('Ration card (or Aadhaar numbers of all family members if there is no ration card)', 'राशन कार्ड (राशन कार्ड न हो तो परिवार के सभी सदस्यों के आधार नंबर)') }],
+      steps: [
+        L('Go to a Common Service Centre (CSC); registration is done there through pmvishwakarma.gov.in with Aadhaar biometric verification.', 'जन सेवा केंद्र (CSC) जाएं; पंजीकरण वहीं pmvishwakarma.gov.in के जरिए आधार बायोमेट्रिक सत्यापन से होता है।'),
+        L('The application is verified in three stages: Gram Panchayat / Urban Local Body, district committee, then screening committee.', 'आवेदन तीन चरणों में सत्यापित होता है: ग्राम पंचायत / शहरी निकाय, जिला समिति, फिर स्क्रीनिंग समिति।'),
+        L('After approval you receive the certificate and ID card, then training, the toolkit incentive and loan access.', 'मंजूरी के बाद प्रमाण पत्र और ID कार्ड मिलता है, फिर प्रशिक्षण, टूलकिट प्रोत्साहन और ऋण की सुविधा।'),
+      ],
+      caveats: [L('Only one member per family can register. Registration is free: do not pay anyone a "processing fee".', 'एक परिवार से केवल एक सदस्य पंजीकरण कर सकता है। पंजीकरण निःशुल्क है: किसी को "प्रोसेसिंग फीस" न दें।')],
+    },
+    {
+      id: 'nsp', cat: 'edu', snapshot: SNAPSHOT,
+      keys: ['scholarship', 'nsp', 'national scholarship', 'student', 'fees', 'college', 'post matric', 'pre matric', 'छात्रवृत्ति', 'स्कॉलरशिप', 'विद्यार्थी', 'छात्र', 'पढ़ाई', 'chhatravritti', 'padhai', 'education'],
+      name: L('National Scholarship Portal (central and state scholarships)', 'राष्ट्रीय छात्रवृत्ति पोर्टल (केंद्र और राज्य की छात्रवृत्तियां)'),
+      summary: L('One portal to apply for many government scholarships for school and college students.', 'स्कूल और कॉलेज के विद्यार्थियों की कई सरकारी छात्रवृत्तियों के आवेदन का एक ही पोर्टल।'),
+      benefit: L('The amount depends on the specific scholarship (pre-matric, post-matric, merit-cum-means, top-class, etc.).', 'राशि संबंधित छात्रवृत्ति (प्री-मैट्रिक, पोस्ट-मैट्रिक, मेरिट-कम-मीन्स, टॉप-क्लास आदि) पर निर्भर है।'),
+      sources: [{ title: 'National Scholarship Portal', url: 'https://scholarships.gov.in/' }],
+      ask: ['student'],
+      rules: [
+        p => { const v = yn(p.student); return v === null ? U(L('You must be enrolled in a recognised school, college or institute.', 'आपको किसी मान्यता प्राप्त स्कूल, कॉलेज या संस्थान में नामांकित होना चाहिए।')) : v ? P(L('Currently enrolled as a student.', 'अभी विद्यार्थी के रूप में नामांकित हैं।')) : F(L('Scholarships on the portal are for students currently enrolled in a recognised institution.', 'पोर्टल की छात्रवृत्तियां मान्यता प्राप्त संस्थान में अभी नामांकित विद्यार्थियों के लिए हैं।')); },
+        () => U(L('Each scholarship has its own conditions (family income ceiling, category, marks, course). The portal shows the schemes you qualify for after you register.', 'हर छात्रवृत्ति की अपनी शर्तें हैं (पारिवारिक आय सीमा, श्रेणी, अंक, पाठ्यक्रम)। पंजीकरण के बाद पोर्टल वे योजनाएं दिखाता है जिनके आप पात्र हैं।')),
+      ],
+      docs: [AADHAAR, { t: L('Bank account in the student\'s own name, linked to Aadhaar', 'विद्यार्थी के अपने नाम का बैंक खाता, आधार से जुड़ा') }, { t: L('Family income certificate from the competent authority', 'सक्षम प्राधिकारी से पारिवारिक आय प्रमाण पत्र') }, { t: L('Caste / community / disability certificate, if the scholarship requires it', 'जाति / समुदाय / दिव्यांगता प्रमाण पत्र, यदि छात्रवृत्ति में जरूरी हो') }, { t: L('Previous year\'s marksheet', 'पिछले साल की अंकतालिका') }, { t: L('Current-year fee receipt and bonafide / admission proof', 'चालू वर्ष की फीस रसीद और बोनाफाइड / प्रवेश का प्रमाण') }, { t: L('Domicile / residence certificate', 'मूल निवास / निवास प्रमाण पत्र') }],
+      steps: [
+        L('Complete One Time Registration (OTR) on scholarships.gov.in using Aadhaar; you get an OTR number.', 'scholarships.gov.in पर आधार से वन टाइम रजिस्ट्रेशन (OTR) पूरा करें; आपको OTR नंबर मिलेगा।'),
+        L('Log in, fill the application and pick from the scholarships shown as matching your profile.', 'लॉगिन करें, आवेदन भरें और आपकी प्रोफाइल से मेल खाती छात्रवृत्तियों में से चुनें।'),
+        L('Upload documents and submit before the closing date; your institute then verifies the application.', 'दस्तावेज अपलोड करें और अंतिम तिथि से पहले जमा करें; फिर आपका संस्थान आवेदन सत्यापित करता है।'),
+        L('Track the status on the portal; money is paid into the student\'s bank account.', 'पोर्टल पर स्थिति देखें; राशि विद्यार्थी के बैंक खाते में आती है।'),
+      ],
+      caveats: [L('Opening and closing dates change every academic year and differ by scholarship. Check the dates on the portal before you rely on any deadline.', 'आवेदन शुरू और बंद होने की तिथियां हर शैक्षणिक वर्ष बदलती हैं और छात्रवृत्ति के अनुसार अलग हैं। किसी समय-सीमा पर भरोसा करने से पहले पोर्टल पर तिथियां जांचें।')],
+    },
+    {
+      id: 'passport', cat: 'id', snapshot: SNAPSHOT,
+      keys: ['passport', 'travel abroad', 'tatkal', 'tatkaal', 'passport seva', 'पासपोर्ट', 'विदेश', 'videsh'],
+      name: L('Passport (fresh application)', 'पासपोर्ट (नया आवेदन)'),
+      summary: L('Apply for a new Indian passport through Passport Seva.', 'पासपोर्ट सेवा के जरिए नए भारतीय पासपोर्ट के लिए आवेदन।'),
+      benefit: L('Adult passports are valid for 10 years. Minors get 5 years or until they turn 18, whichever is earlier.', 'वयस्कों का पासपोर्ट 10 साल के लिए मान्य होता है। नाबालिगों का 5 साल या 18 की उम्र तक, जो पहले हो।'),
+      sources: [{ title: 'Passport Seva (Ministry of External Affairs)', url: 'https://www.passportindia.gov.in/' }],
+      ask: ['age', 'tatkal'],
+      rules: [() => P(L('Any Indian citizen can apply; there is no age or income condition.', 'कोई भी भारतीय नागरिक आवेदन कर सकता है; उम्र या आय की कोई शर्त नहीं।'))],
+      docs: [
+        { t: L('Proof of date of birth (birth certificate, Class 10 certificate, PAN or Aadhaar)', 'जन्म तिथि का प्रमाण (जन्म प्रमाण पत्र, 10वीं का प्रमाण पत्र, PAN या आधार)') },
+        { t: L('Proof of present address (Aadhaar, electricity/water bill, bank passbook with photo, voter ID or rent agreement)', 'वर्तमान पते का प्रमाण (आधार, बिजली/पानी का बिल, फोटो वाली बैंक पासबुक, वोटर ID या किराया अनुबंध)') },
+        { t: L('Both parents\' passports or ID proofs, and Annexure D declaration signed by the parents', 'माता-पिता दोनों के पासपोर्ट या पहचान प्रमाण, और माता-पिता द्वारा हस्ताक्षरित Annexure D घोषणा'), if: p => p.age != null && p.age < 18 },
+        { t: L('Recent photograph with white background (for minors under 4)', 'सफेद पृष्ठभूमि वाला हाल का फोटो (4 साल से छोटे बच्चों के लिए)'), if: p => p.age != null && p.age < 4 },
+        { t: L('Additional documents listed for Tatkaal on the Passport Seva site (applications are checked more strictly)', 'पासपोर्ट सेवा साइट पर तत्काल के लिए सूचीबद्ध अतिरिक्त दस्तावेज (आवेदन की जांच अधिक सख्ती से होती है)'), if: p => p.tatkal === 'yes' },
+        { t: L('Printed appointment receipt (ARN)', 'अपॉइंटमेंट रसीद (ARN) का प्रिंट') },
+      ],
+      steps: [
+        L('Register on passportindia.gov.in (or the mPassport Seva app) and fill the "Fresh Passport" form.', 'passportindia.gov.in (या mPassport Seva ऐप) पर पंजीकरण करें और "Fresh Passport" फॉर्म भरें।'),
+        L('Pay the fee online and book an appointment at a Passport Seva Kendra or Post Office PSK.', 'ऑनलाइन शुल्क भरें और पासपोर्ट सेवा केंद्र या डाकघर PSK पर अपॉइंटमेंट लें।'),
+        L('Visit with ORIGINAL documents and one set of self-attested copies; photo and fingerprints are taken there.', 'मूल दस्तावेजों और स्व-सत्यापित प्रतियों के एक सेट के साथ जाएं; फोटो और उंगलियों के निशान वहीं लिए जाते हैं।'),
+        L('Police verification follows (usually before issue), then the passport is sent by Speed Post.', 'इसके बाद पुलिस सत्यापन होता है (आम तौर पर जारी होने से पहले), फिर पासपोर्ट स्पीड पोस्ट से भेजा जाता है।'),
+      ],
+      caveats: [L('Fees are not quoted here because they depend on booklet size, age and Tatkaal. Use the official "Fee Calculator" on the Passport Seva site.', 'शुल्क यहां नहीं दिया गया क्योंकि यह बुकलेट के आकार, उम्र और तत्काल पर निर्भर है। पासपोर्ट सेवा साइट का आधिकारिक "Fee Calculator" देखें।'),
+        L('Apply only on the .gov.in site. Many look-alike websites charge extra "service fees".', 'केवल .gov.in साइट पर आवेदन करें। कई मिलती-जुलती वेबसाइटें अतिरिक्त "सेवा शुल्क" वसूलती हैं।')],
+    },
+    {
+      id: 'voter', cat: 'id', snapshot: SNAPSHOT,
+      keys: ['voter', 'voter id', 'epic', 'election card', 'form 6', 'vote', 'electoral roll', 'मतदाता', 'वोटर', 'वोटर कार्ड', 'पहचान पत्र', 'matdata', 'chunav', 'चुनाव'],
+      name: L('Voter ID (new voter registration, Form 6)', 'वोटर ID (नया मतदाता पंजीकरण, फॉर्म 6)'),
+      summary: L('Add your name to the electoral roll and get an EPIC (voter card).', 'मतदाता सूची में अपना नाम जोड़ें और EPIC (वोटर कार्ड) पाएं।'),
+      benefit: L('Registration is free. The EPIC card is sent by post and an e-EPIC can be downloaded.', 'पंजीकरण निःशुल्क है। EPIC कार्ड डाक से आता है और e-EPIC डाउनलोड किया जा सकता है।'),
+      sources: [{ title: 'Voters\' Service Portal (Election Commission of India)', url: 'https://voters.eci.gov.in/' }],
+      ask: ['age'],
+      rules: [
+        p => p.age == null ? U(L('You must be an Indian citizen aged 18 on a qualifying date (1 January, 1 April, 1 July or 1 October).', 'आपको भारतीय नागरिक होना चाहिए और अर्हता तिथि (1 जनवरी, 1 अप्रैल, 1 जुलाई या 1 अक्टूबर) को 18 साल का होना चाहिए।'))
+          : p.age >= 18 ? P(L('Aged 18 or above.', 'उम्र 18 या अधिक।'))
+          : p.age === 17 ? U(L('At 17 you can apply in advance; your name is added on the first qualifying date (1 Jan, 1 Apr, 1 Jul, 1 Oct) after you turn 18.', '17 की उम्र में आप अग्रिम आवेदन कर सकते हैं; 18 के होने के बाद पहली अर्हता तिथि (1 जन, 1 अप्रै, 1 जुल, 1 अक्टू) पर नाम जुड़ जाता है।'))
+          : F(L('You must be 18 on a qualifying date. Advance applications are accepted from age 17.', 'अर्हता तिथि को आपकी उम्र 18 होनी चाहिए। अग्रिम आवेदन 17 की उम्र से लिए जाते हैं।')),
+      ],
+      docs: [PHOTO, { t: L('Age proof (birth certificate, Aadhaar, PAN, Class 10/12 certificate or passport)', 'उम्र का प्रमाण (जन्म प्रमाण पत्र, आधार, PAN, 10वीं/12वीं का प्रमाण पत्र या पासपोर्ट)') }, { t: L('Address proof (Aadhaar, utility bill, bank/post-office passbook, passport or registered rent/sale deed)', 'पते का प्रमाण (आधार, बिजली-पानी का बिल, बैंक/डाकघर पासबुक, पासपोर्ट या पंजीकृत किराया/बिक्री विलेख)') }],
+      steps: [
+        L('Fill Form 6 on voters.eci.gov.in or in the Voter Helpline app (or give a paper form to your Booth Level Officer).', 'voters.eci.gov.in या Voter Helpline ऐप पर फॉर्म 6 भरें (या कागजी फॉर्म अपने बूथ लेवल अधिकारी को दें)।'),
+        L('Upload the photo and proofs and note the reference number.', 'फोटो और प्रमाण अपलोड करें और संदर्भ संख्या नोट करें।'),
+        L('The Booth Level Officer may visit to verify your address.', 'बूथ लेवल अधिकारी पते की पुष्टि के लिए आ सकते हैं।'),
+        L('Track with the reference number; helpline 1950.', 'संदर्भ संख्या से स्थिति देखें; हेल्पलाइन 1950।'),
+      ],
+      caveats: [],
+    },
+    {
+      id: 'dl', cat: 'id', snapshot: SNAPSHOT,
+      keys: ['driving licence', 'driving license', 'learner', 'learners licence', 'dl', 'll', 'rto', 'sarathi', 'parivahan', 'ड्राइविंग लाइसेंस', 'लाइसेंस', 'लर्निंग', 'आरटीओ', 'gaadi', 'license'],
+      name: L('Driving licence (learner\'s licence first)', 'ड्राइविंग लाइसेंस (पहले लर्नर लाइसेंस)'),
+      summary: L('Get a learner\'s licence, then take the driving test for a permanent licence.', 'पहले लर्नर लाइसेंस लें, फिर स्थायी लाइसेंस के लिए ड्राइविंग टेस्ट दें।'),
+      benefit: L('A learner\'s licence is valid for 6 months; you can take the driving test 30 days after it is issued.', 'लर्नर लाइसेंस 6 महीने के लिए मान्य होता है; जारी होने के 30 दिन बाद ड्राइविंग टेस्ट दे सकते हैं।'),
+      sources: [{ title: 'Sarathi Parivahan (Ministry of Road Transport & Highways)', url: 'https://sarathi.parivahan.gov.in/' }, { title: 'Parivahan Sewa', url: 'https://parivahan.gov.in/' }],
+      ask: ['age', 'vehicle'],
+      rules: [
+        p => {
+          if (p.age == null || p.vehicle == null) return U(L('Minimum age is 16 for gearless two-wheelers up to 50cc (with a parent\'s consent), 18 for other private vehicles, and higher conditions apply to transport vehicles.', '50cc तक के बिना गियर दोपहिया के लिए न्यूनतम उम्र 16 (अभिभावक की सहमति से), अन्य निजी वाहनों के लिए 18, और परिवहन वाहनों के लिए और शर्तें लागू हैं।'));
+          if (p.vehicle === 'gearless') return p.age >= 16 ? P(L('Aged 16 or above: eligible for a gearless two-wheeler up to 50cc' + (p.age < 18 ? ' with a parent/guardian\'s written consent.' : '.'), '16 या अधिक उम्र: 50cc तक के बिना गियर दोपहिया के लिए पात्र' + (p.age < 18 ? ', अभिभावक की लिखित सहमति के साथ।' : '।'))) : F(L('Minimum age is 16 even for a gearless two-wheeler up to 50cc.', '50cc तक के बिना गियर दोपहिया के लिए भी न्यूनतम उम्र 16 है।'));
+          if (p.vehicle === 'gear') return p.age >= 18 ? P(L('Aged 18 or above: eligible for a geared two-wheeler or car.', '18 या अधिक उम्र: गियर वाले दोपहिया या कार के लिए पात्र।')) : F(L('You must be 18 for a geared two-wheeler or car. At 16 you can apply only for a gearless two-wheeler up to 50cc.', 'गियर वाले दोपहिया या कार के लिए उम्र 18 होनी चाहिए। 16 की उम्र में केवल 50cc तक के बिना गियर दोपहिया के लिए आवेदन कर सकते हैं।'));
+          return p.age >= 18 ? U(L('Aged 18 or above, but transport-vehicle licences have extra conditions (training from an authorised school, medical certificate, and state-specific rules). Confirm with your RTO.', '18 या अधिक उम्र, पर परिवहन वाहन लाइसेंस की अतिरिक्त शर्तें हैं (अधिकृत स्कूल से प्रशिक्षण, मेडिकल प्रमाण पत्र और राज्य के नियम)। अपने RTO से पुष्टि करें।')) : F(L('You must be at least 18 for a transport-vehicle licence.', 'परिवहन वाहन लाइसेंस के लिए उम्र कम से कम 18 होनी चाहिए।'));
+        },
+      ],
+      docs: [
+        { t: L('Age proof (birth certificate, Class 10 certificate, PAN or passport)', 'उम्र का प्रमाण (जन्म प्रमाण पत्र, 10वीं का प्रमाण पत्र, PAN या पासपोर्ट)') },
+        { t: L('Address proof (Aadhaar, voter ID, passport or utility bill)', 'पते का प्रमाण (आधार, वोटर ID, पासपोर्ट या बिजली-पानी का बिल)') },
+        { t: L('Form 1: self-declaration of physical fitness', 'फॉर्म 1: शारीरिक स्वस्थता की स्व-घोषणा') },
+        { t: L('Form 1A: medical certificate from a registered doctor', 'फॉर्म 1A: पंजीकृत डॉक्टर से मेडिकल प्रमाण पत्र'), if: p => p.vehicle === 'transport' || (p.age != null && p.age >= 40) },
+        { t: L('Written consent of parent/guardian', 'माता-पिता/अभिभावक की लिखित सहमति'), if: p => p.age != null && p.age < 18 },
+        PHOTO,
+      ],
+      steps: [
+        L('On sarathi.parivahan.gov.in choose your state and "Apply for Learner Licence".', 'sarathi.parivahan.gov.in पर अपना राज्य चुनें और "Apply for Learner Licence" पर जाएं।'),
+        L('Fill the form, upload documents, pay the fee and book the learner test (many states allow it online from home with Aadhaar authentication).', 'फॉर्म भरें, दस्तावेज अपलोड करें, शुल्क भरें और लर्नर टेस्ट बुक करें (कई राज्यों में आधार प्रमाणीकरण से घर बैठे ऑनलाइन)।'),
+        L('Pass the test on traffic signs and rules to get the learner\'s licence.', 'यातायात चिह्नों और नियमों का टेस्ट पास करके लर्नर लाइसेंस पाएं।'),
+        L('After 30 days (and within 6 months), book and pass the driving test at the RTO for the permanent licence.', '30 दिन बाद (और 6 महीने के भीतर) स्थायी लाइसेंस के लिए RTO में ड्राइविंग टेस्ट बुक करके पास करें।'),
+      ],
+      caveats: [L('Fees, the online-test facility and slot availability differ by state. The Sarathi portal shows your state\'s current fee before payment.', 'शुल्क, ऑनलाइन टेस्ट की सुविधा और स्लॉट राज्य के अनुसार अलग हैं। भुगतान से पहले सारथी पोर्टल आपके राज्य का मौजूदा शुल्क दिखाता है।')],
+    },
+    {
+      id: 'pan', cat: 'id', snapshot: SNAPSHOT,
+      keys: ['pan', 'pan card', 'e-pan', 'epan', 'instant pan', 'income tax card', 'पैन', 'पैन कार्ड', 'पेन कार्ड'],
+      name: L('PAN (instant e-PAN through Aadhaar)', 'PAN (आधार से तुरंत e-PAN)'),
+      summary: L('Get a PAN online in minutes using Aadhaar e-KYC.', 'आधार e-KYC से कुछ ही मिनटों में ऑनलाइन PAN पाएं।'),
+      benefit: L('The instant e-PAN is free and is a valid PAN (issued as a digitally signed PDF).', 'तुरंत मिलने वाला e-PAN निःशुल्क है और मान्य PAN है (डिजिटल हस्ताक्षरित PDF के रूप में)।'),
+      sources: [{ title: 'Income Tax e-Filing portal: Instant e-PAN', url: 'https://www.incometax.gov.in/iec/foportal/' }],
+      ask: ['age', 'hasPan', 'aadhaarMobile'],
+      rules: [
+        p => p.age == null ? U(L('The instant e-PAN route is for adults; minors apply through a parent/guardian using Form 49A.', 'तुरंत e-PAN का रास्ता वयस्कों के लिए है; नाबालिग माता-पिता/अभिभावक के जरिए फॉर्म 49A से आवेदन करते हैं।')) : p.age >= 18 ? P(L('Adult applicant.', 'वयस्क आवेदक।')) : F(L('Instant e-PAN is not available to minors. A parent/guardian can apply with Form 49A through Protean (NSDL) or UTIITSL.', 'नाबालिगों के लिए तुरंत e-PAN उपलब्ध नहीं है। माता-पिता/अभिभावक Protean (NSDL) या UTIITSL के जरिए फॉर्म 49A से आवेदन कर सकते हैं।')),
+        p => { const v = yn(p.hasPan); return v === null ? U(L('You must never have been allotted a PAN. Holding two PANs attracts a penalty.', 'आपको पहले कभी PAN नहीं मिला होना चाहिए। दो PAN रखने पर जुर्माना लगता है।')) : v ? F(L('You already have a PAN. Do not apply for a new one (holding two PANs attracts a penalty); request a reprint or correction instead.', 'आपके पास पहले से PAN है। नया आवेदन न करें (दो PAN रखने पर जुर्माना लगता है); इसके बजाय रीप्रिंट या सुधार के लिए आवेदन करें।')) : P(L('No PAN allotted earlier.', 'पहले कोई PAN नहीं मिला।')); },
+        p => { const v = yn(p.aadhaarMobile); return v === null ? U(L('Your mobile number must be linked to Aadhaar to receive the OTP.', 'OTP पाने के लिए मोबाइल नंबर आधार से जुड़ा होना चाहिए।')) : v ? P(L('Mobile number is linked to Aadhaar.', 'मोबाइल नंबर आधार से जुड़ा है।')) : F(L('The instant route needs a mobile number linked to Aadhaar. Link it at an Aadhaar centre first, or apply with Form 49A instead.', 'तुरंत वाले रास्ते के लिए आधार से जुड़ा मोबाइल नंबर चाहिए। पहले आधार केंद्र पर इसे जुड़वाएं, या फॉर्म 49A से आवेदन करें।')); },
+      ],
+      docs: [{ t: L('Aadhaar number (no upload needed)', 'आधार नंबर (अपलोड की जरूरत नहीं)') }, MOBILE],
+      steps: [
+        L('On the Income Tax e-Filing portal open "Instant E-PAN" → "Get New e-PAN".', 'आयकर e-Filing पोर्टल पर "Instant E-PAN" → "Get New e-PAN" खोलें।'),
+        L('Enter your Aadhaar number and confirm with the OTP sent to your Aadhaar-linked mobile.', 'आधार नंबर डालें और आधार से जुड़े मोबाइल पर आए OTP से पुष्टि करें।'),
+        L('Check the details pulled from Aadhaar and submit; note the acknowledgement number.', 'आधार से आई जानकारी जांचें और जमा करें; पावती संख्या नोट करें।'),
+        L('Download the e-PAN from "Check Status / Download PAN".', '"Check Status / Download PAN" से e-PAN डाउनलोड करें।'),
+      ],
+      caveats: [L('Enter your Aadhaar OTP only on the incometax.gov.in site. Fake "PAN update" links are a common scam.', 'आधार OTP केवल incometax.gov.in साइट पर ही डालें। "PAN अपडेट" के नकली लिंक एक आम ठगी हैं।')],
+    },
+    {
+      id: 'aadhaar-address', cat: 'id', snapshot: SNAPSHOT,
+      keys: ['aadhaar', 'aadhar', 'adhar', 'aadhaar update', 'address change', 'address update', 'uidai', 'आधार', 'पता बदलना', 'आधार अपडेट', 'pata', 'पता'],
+      name: L('Aadhaar address update (online)', 'आधार में पता अपडेट (ऑनलाइन)'),
+      summary: L('Change the address printed on your Aadhaar through the myAadhaar portal.', 'myAadhaar पोर्टल से अपने आधार पर छपा पता बदलें।'),
+      benefit: L('The updated Aadhaar can be downloaded after approval; you get a request number (URN/SRN) to track it.', 'मंजूरी के बाद अपडेट किया हुआ आधार डाउनलोड किया जा सकता है; ट्रैक करने के लिए अनुरोध संख्या (URN/SRN) मिलती है।'),
+      sources: [{ title: 'myAadhaar portal (UIDAI)', url: 'https://myaadhaar.uidai.gov.in/' }, { title: 'UIDAI', url: 'https://uidai.gov.in/' }],
+      ask: ['aadhaarMobile'],
+      rules: [
+        p => { const v = yn(p.aadhaarMobile); return v === null ? U(L('Online update needs a mobile number linked to Aadhaar for OTP login.', 'ऑनलाइन अपडेट के लिए OTP लॉगिन हेतु आधार से जुड़ा मोबाइल नंबर चाहिए।')) : v ? P(L('Mobile is linked to Aadhaar, so you can update online.', 'मोबाइल आधार से जुड़ा है, इसलिए आप ऑनलाइन अपडेट कर सकते हैं।')) : F(L('Without an Aadhaar-linked mobile you cannot update online. Visit an Aadhaar Seva Kendra / enrolment centre with your address proof instead.', 'आधार से जुड़े मोबाइल के बिना ऑनलाइन अपडेट नहीं हो सकता। इसके बजाय पते के प्रमाण के साथ आधार सेवा केंद्र / नामांकन केंद्र जाएं।')); },
+      ],
+      docs: [{ t: L('Proof of address in your own name from UIDAI\'s accepted list (for example passport, bank passbook, voter ID, recent electricity/water/gas bill, or registered rent agreement)', 'UIDAI की स्वीकृत सूची से आपके अपने नाम का पते का प्रमाण (जैसे पासपोर्ट, बैंक पासबुक, वोटर ID, हाल का बिजली/पानी/गैस बिल, या पंजीकृत किराया अनुबंध)') }, { t: L('If you have no document in your name: consent of the Head of Family, who shares the same address in their Aadhaar', 'यदि आपके नाम कोई दस्तावेज नहीं है: परिवार के मुखिया की सहमति, जिनके आधार में वही पता हो') }, MOBILE],
+      steps: [
+        L('Log in at myaadhaar.uidai.gov.in with your Aadhaar number and OTP.', 'myaadhaar.uidai.gov.in पर आधार नंबर और OTP से लॉगिन करें।'),
+        L('Choose "Address Update", enter the new address and upload a clear scan of the proof.', '"Address Update" चुनें, नया पता डालें और प्रमाण का साफ स्कैन अपलोड करें।'),
+        L('Pay the fee shown on the portal and save the request number.', 'पोर्टल पर दिखाया गया शुल्क भरें और अनुरोध संख्या सुरक्षित रखें।'),
+        L('Track the request on the portal; helpline 1947.', 'पोर्टल पर अनुरोध की स्थिति देखें; हेल्पलाइन 1947।'),
+      ],
+      caveats: [L('The update fee is revised from time to time, so no amount is quoted here. The portal shows the current fee before you pay.', 'अपडेट शुल्क समय-समय पर बदलता है, इसलिए यहां कोई राशि नहीं दी गई। भुगतान से पहले पोर्टल मौजूदा शुल्क दिखाता है।')],
+    },
+  ];
+
+  /* ---- retrieval: keyword match over names + keywords, in any of the three writing styles ---- */
+  const norm = s => String(s).toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
+  function search(query) {
+    const q = ' ' + norm(query) + ' ';
+    const toks = q.trim().split(' ').filter(Boolean);
+    const scored = KB.map(e => {
+      let s = 0;
+      const seen = new Set();
+      e.keys.concat(norm(e.name.en).split(' ').filter(w => w.length > 3), norm(e.name.hi).split(' ').filter(w => w.length > 3)).forEach(k => {
+        k = norm(k); if (!k || seen.has(k)) return; seen.add(k);
+        if (k.includes(' ')) { if (q.includes(' ' + k + ' ')) s += 3; }
+        else if (toks.includes(k)) s += 2;
+        else if (k.length >= 5 && toks.some(t => t.length >= 5 && (t.startsWith(k) || k.startsWith(t)))) s += 1;
+      });
+      return { e, s };
+    }).filter(x => x.s >= 2).sort((a, b) => b.s - a.s);
+    if (!scored.length) return [];
+    return scored.filter(x => x.s >= scored[0].s * 0.5).slice(0, 3).map(x => x.e);
+  }
+
+  function evaluate(entry, profile) {
+    const reasons = entry.rules.map(r => r(profile));
+    const verdict = reasons.some(r => r.s === 'fail') ? 'fail' : reasons.some(r => r.s === 'unknown') ? 'unknown' : 'pass';
+    const docs = entry.docs.filter(d => !d.if || d.if(profile));
+    return { verdict, reasons, docs };
+  }
+  function monthsOld(snapshot, now) {
+    const [y, m] = snapshot.split('-').map(Number);
+    const d = now || new Date();
+    return (d.getFullYear() - y) * 12 + (d.getMonth() + 1 - m);
+  }
+
+  const api = { KB, QUESTIONS, CATEGORIES, STALE_AFTER_MONTHS, search, evaluate, monthsOld };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.SevaKB = api;
+})(typeof window !== 'undefined' ? window : globalThis);
